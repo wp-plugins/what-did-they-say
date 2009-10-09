@@ -11,7 +11,7 @@ What Did They Say?!? lets your users provide multilingual transcriptions to your
 == Description ==
 
 Run a webcomic site? Post a lot of videos or audio files for your readers to enjoy? Wish you could easily and attractively present
-transcripts for your media files...and even let dedicated users manage those transcripts for you? Then What Did They Day?!? is what you need!
+transcripts for your media files...and even let dedicated users manage those transcripts for you? Then What Did They Say?!? is what you need!
 
 **What Did They Say?!?** (WDTS) integrates fully with your WordPress site. You can use it without making any theme modifications, and you can customize
 the output as little or as much as you want. Site search also searches transcript content. It's easy to add new languages to support.
@@ -79,6 +79,10 @@ short codes into your transcripts.
 1. The **What Did They Say?!?** admin screen, with tabs running across the top.
 2. The Manage Transcripts meta box, including the short codes buttons.
 3. The Language management screen.
+
+== Credits ==
+
+Language tags are from the subtag registry at [http://www.langtag.net/](http://www.langtag.net/).
 
 == Changelog ==
 
