@@ -49,6 +49,11 @@ class WhatDidTheySayAdmin {
   // just in case things need to be unit tested...
   function get_filters_dir() { return WP_CONTENT_DIR . '/transcript-filters'; }
   function _get_abspath()    { return ABSPATH; }
+  function _glob($pattern)   {
+    $result = glob($pattern);
+    if ($result === false) { $result = array(); }
+    return $result;
+  }
   
   /**
    * Initialize the object.
@@ -77,6 +82,9 @@ class WhatDidTheySayAdmin {
       if ($any_changes) { update_option('what-did-they-say-options', $options); }
     }
 
+    // sessions
+    if (!session_id()) { session_start(); }
+
     // pages
     add_action('admin_menu', array(&$this, 'admin_menu'));
     add_action('admin_notices', array(&$this, 'admin_notices'));
@@ -89,11 +97,23 @@ class WhatDidTheySayAdmin {
     $filters = new WDTSDisplayFilters();
     $reset_filter_value = true;
 
-    if (is_string($options['filters_to_use'])) {
-      $target = $this->get_filters_dir() . '/' . preg_replace('#[^a-z0-9_-]#', '', strtolower($options['filters_to_use']));
-      if (is_dir($target)) {
-        $this->override_filter_info = array();
-        foreach (glob($target . '/*') as $file) {
+    $filter_to_use = false;
+    if (is_string($options['filters_to_use'])) { $filter_to_use = $options['filters_to_use']; }
+    if (current_user_can('submit_transcriptions')) {
+      if (isset($_REQUEST['wdts'])) {
+        if (isset($_REQUEST['wdts']['filter_preview'])) {
+          $filter_to_use = $_REQUEST['wdts']['filter_preview'];
+        }
+      }
+    }
+
+    if ($filter_to_use) {
+      $all_filters = $this->_get_available_override_filters();
+
+      $filter_to_use = preg_replace('#[^a-z0-9_-]#', '', strtolower($filter_to_use));
+
+      if (isset($all_filters[$filter_to_use])) {
+        foreach ($this->_glob($all_filters[$filter_to_use] . '/*') as $file) {
           if (preg_match('#\.(php|inc)$#', $file) > 0) { $this->override_filter_info['php'] = $file; }
           if (preg_match('#\.(css)$#', $file) > 0)     { $this->override_filter_info['css'] = $file; }
         }
@@ -110,6 +130,7 @@ class WhatDidTheySayAdmin {
       }
     }
 
+    // short codes
     foreach (array(
       array('the_media_transcript', 2),
       array('the_language_name', 2),
@@ -129,7 +150,6 @@ class WhatDidTheySayAdmin {
       }
     }
 
-    // short codes
     foreach (get_class_methods($this) as $method) {
       if (strpos($method, "shortcode_") === 0) {
         $shortcode_name = str_replace("_", "-", str_replace("shortcode_", "", $method));
@@ -164,7 +184,23 @@ class WhatDidTheySayAdmin {
         include('partials/_editor-script.inc');
         exit(0);
       }
-      
+
+      if (isset($_REQUEST['wdts']['filter_preview'])) {
+        $styles_to_include = array(
+          plugin_dir_url(dirname(__FILE__)) . 'css/wdts-defaults.css'
+        );
+
+        if (isset($this->override_filter_info['css'])) {
+          if (($path = realpath($this->override_filter_info['css'])) !== false) {
+            $styles_to_include[] = str_replace(realpath($this->_get_abspath()), '', $path);
+          }
+        }
+
+        include('partials/_sample-transcript.inc');
+        include('partials/_show-sample-transcript.inc');
+        exit(0);
+      }
+
       if (isset($_REQUEST['wdts']['_nonce'])) {
         if (wp_verify_nonce($_REQUEST['wdts']['_nonce'], 'what-did-they-say')) {
 					if (($_REQUEST['wdts']['post_id'] <= 0) && ($_POST['post_ID'] > 0)) {
@@ -178,7 +214,9 @@ class WhatDidTheySayAdmin {
       }
     }
 
-    $this->transcript_count = (int)$wpdb->get_var($wpdb->prepare("SELECT count($wpdb->postmeta.meta_key) FROM $wpdb->postmeta WHERE $wpdb->postmeta.meta_key = 'approved_transcripts'"));
+    if (is_admin()) {
+      $this->transcript_count = (int)$wpdb->get_var($wpdb->prepare("SELECT count($wpdb->postmeta.meta_key) FROM $wpdb->postmeta WHERE $wpdb->postmeta.meta_key = 'approved_transcripts'"));
+    }
 	}
 
 	/** Widget **/
@@ -196,6 +234,15 @@ class WhatDidTheySayAdmin {
       echo 'WhatDidTheySay.ajax_url = "' . addslashes($_SERVER['REQUEST_URI']) . '";';
       echo 'WhatDidTheySay.nonce = "' . $nonce . '";';
     echo '</script>';
+
+    if (isset($_SESSION['what-did-they-say'])) {
+      if (isset($_SESSION['what-did-they-say']['updated'])) {
+        echo '<div class="wdts-updated"><div>' . $_SESSION['what-did-they-say']['updated'] . '</div></div>';
+      }
+    }
+
+    // clear out our session variable, we only need it briefly
+    unset($_SESSION['what-did-they-say']);
   }
 
   /**
@@ -217,7 +264,9 @@ class WhatDidTheySayAdmin {
     }
 
     if (isset($this->override_filter_info['css'])) {
-      wp_enqueue_style('wdts-override', str_replace(realpath($this->_get_abspath()), '', realpath($this->override_filter_info['css'])));
+      if (($path = realpath($this->override_filter_info['css'])) !== false) {
+        wp_enqueue_style('wdts-override', str_replace(realpath($this->_get_abspath()), '', $path));
+      }
     }
 
     if ($options['transcript_effects']) {
@@ -507,6 +556,11 @@ class WhatDidTheySayAdmin {
     }
 
     if (!is_admin()) {
+      $_SESSION['what-did-they-say'] = array(
+        'action'  => 'queue-transcript',
+        'post_id' => $info['post_id'],
+        'updated' => $updated
+      );
       header('Location: ' . $_SERVER['HTTP_REFERER']);
       exit(0);
     } else {
@@ -817,19 +871,27 @@ class WhatDidTheySayAdmin {
 
   function _get_available_override_filters() {
     $available_filters = array();
-    if (is_dir($this->get_filters_dir())) {
-      foreach (glob($this->get_filters_dir() . '/*') as $dir) {
-        if (is_dir($dir)) {
-          if (basename($dir) == preg_replace('#[^a-z0-9_-]#', '', strtolower(basename($dir)))) {
-            foreach (glob($dir . '/*') as $file) {
-              if (preg_match('#^(.*)\.(inc|php)$#', basename($file), $matches) > 0) {
-                $available_filters[] = basename($dir);
+    $search_path = array(
+      realpath(dirname(__FILE__) . '/../transcript-filters'),
+      $this->get_filters_dir()
+    );
+
+    foreach ($search_path as $target) {
+      if (is_dir($target)) {
+        foreach ($this->_glob($target . '/*') as $dir) {
+          if (is_dir($dir)) {
+            if (basename($dir) == preg_replace('#[^a-z0-9_-]#', '', strtolower(basename($dir)))) {
+              foreach ($this->_glob($dir . '/*') as $file) {
+                if (preg_match('#^(.*)\.(inc|php)$#', basename($file), $matches) > 0) {
+                  $available_filters[basename($dir)] = $dir;
+                }
               }
             }
           }
         }
       }
     }
+    
     return $available_filters;
   }
 
