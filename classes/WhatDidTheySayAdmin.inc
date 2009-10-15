@@ -335,6 +335,14 @@ class WhatDidTheySayAdmin {
     }
 
     if (current_user_can('approve_transcriptions')) {
+      // edit posts notification
+      add_filter('manage_posts_columns', array(&$this, 'manage_posts_columns'));
+      add_action('manage_posts_custom_column', array(&$this, 'manage_posts_custom_column'), 10, 2);
+
+      // dashboard widget
+      //wp_add_dashboard_widget('dashboard_transcripts', __('Recent Queued Transcripts', 'what-did-they-say'), array(&$this, 'dashboard_transcripts'));
+      //add_action('wp_dashboard_setup', array(&$this, 'add_dashboard_transcripts'));
+
       if (strpos($pagenow, "post") === 0) {
         add_meta_box(
           'manage-transcriptions',
@@ -371,6 +379,34 @@ class WhatDidTheySayAdmin {
     return $content . ob_get_clean();
   }
 
+  /**
+   * The edit posts column header.
+   */
+  function manage_posts_columns($columns) {
+    $keys = array_keys($columns);
+    $values = array_values($columns);
+    
+    $index = array_search('comments', $keys);
+    if ($index === false) { $index = count($keys); }
+
+    array_splice($keys, $index, 0, array('transcripts'));
+    array_splice($values, $index, 0, __('Trans'));
+
+    return array_combine($keys, $values);
+  }
+
+  /**
+   * The edit posts column. Needs a pretty icon.
+   */
+  function manage_posts_custom_column($name, $post_id) {
+    if ($name === "transcripts") {
+      $queued_transcript_object = new WDTSQueuedTranscript($post_id);
+
+      if (($queued_count = $queued_transcript_object->count()) > 0) {
+        printf(__('%s queued', 'what-did-they-say'), $queued_count);
+      }
+    }
+  }
 
   /** Transcript Search Filters **/
 
@@ -452,7 +488,9 @@ class WhatDidTheySayAdmin {
    * @param object $capability_name
    * @return array The list of capabilities this user now has.
    */
-  function user_has_cap($capabilities, $requested_capabilities, $capability_name) {
+  function user_has_cap($capabilities, $requested_capabilities, $args) {
+    list($capability_name, $user_id) = $args;
+    
     $options = get_option('what-did-they-say-options');
     if (is_array($options)) {
       $role_cascade = array('subscriber', 'contributor', 'author', 'editor', 'administrator');
@@ -466,6 +504,16 @@ class WhatDidTheySayAdmin {
 
       foreach ($requested_capabilities as $requested_capability) {
         if (in_array($options['capabilities'][$requested_capability], $allowed_roles)) {
+          $capabilities[$requested_capability] = true;
+        }
+      }
+    }
+
+    $user_capabilities = get_usermeta($user_id, 'transcript_capabilities');
+
+    if (is_array($user_capabilities)) {
+      foreach ($requested_capabilities as $requested_capability) {
+        if (isset($user_capabilities[$requested_capability])) {
           $capabilities[$requested_capability] = true;
         }
       }
@@ -789,6 +837,39 @@ class WhatDidTheySayAdmin {
   }
 
   /**
+   * Update per-user capabilities.
+   */
+  function handle_update_user_capabilities($info) {
+    global $wpdb;
+
+    $updated = false;
+    if (current_user_can('edit_users')) {
+      $users = $wpdb->get_results("SELECT ID, user_login from $wpdb->users ORDER BY user_login");
+
+      foreach ((array)$users as $user) {
+        $user_capabilities = array();
+
+        foreach (array_keys($this->capabilities) as $key) {
+          if (isset($info['user_capabilities'][$user->ID])) {
+            if (isset($info['user_capabilities'][$user->ID][$key])) {
+              $user_capabilities[$key] = true;
+            }
+          }
+        }
+
+        if (!empty($user_capabilities)) {
+          update_usermeta($user->ID, 'transcript_capabilities', $user_capabilities);
+        } else {
+          delete_usermeta($user->ID, 'transcript_capabilities');
+        }
+      }
+      
+      $updated = __('Per-user permissions updated.', 'what-did-they-say');
+    }
+    return $updated;
+  }
+
+  /**
    * Handle resettings what-did-they-say-options.
    * @param array $info The part of the $_POST array for What Did They Say?!?
    * @return string|false A string if a message is to be displayed, or false if no message.
@@ -907,6 +988,8 @@ class WhatDidTheySayAdmin {
     
     $available_filters = $this->_get_available_override_filters();
     $suggested_amount = 20 + ($this->transcript_count * 0.1);
+
+    $users = $wpdb->get_results("SELECT ID, user_login from $wpdb->users ORDER BY user_login");
 
     include('partials/admin.inc');
   }
