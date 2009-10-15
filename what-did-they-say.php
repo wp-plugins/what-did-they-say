@@ -3,7 +3,7 @@
 Plugin Name: What Did They Say?!?
 Plugin URI: http://www.coswellproductions.com/wordpress/wordpress-plugins/
 Description: Manage and display text transcriptions of comics, videos, or other media.
-Version: 0.9.1
+Version: 0.9.2
 Author: John Bintz
 Author URI: http://www.coswellproductions.com/wordpress/
 Text Domain: what-did-they-say
@@ -214,7 +214,14 @@ function the_media_transcript_queue_editor() {
     if ($show_editor) {
       ?>
       <div style="display:none">
-        <span id="wdts-opener-<?php echo $id = md5(rand()) ?>">[ <a href="#"><?php _e('Edit/Add Transcripts', 'what-did-they-say') ?></a> ]</span>
+        <span id="wdts-opener-<?php echo $id = md5(rand()) ?>">[
+          <a href="#"><?php _e('Edit/Add Transcripts', 'what-did-they-say') ?></a>
+          <?php if (current_user_can('approve_transcriptions')) {
+            if (($queued_count = $queued_transcript_object->count()) > 0) { ?>
+              (<strong><?php printf(__('%d queued', 'what-did-they-say'), $queued_count) ?></strong>)
+            <?php } 
+          } ?>
+        ]</span>
       </div>
       <noscript>
         <p>JavaScript is required to edit transcripts.</p>
