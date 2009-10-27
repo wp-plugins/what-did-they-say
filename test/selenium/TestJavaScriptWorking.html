@@ -4,56 +4,58 @@
 <head profile="http://selenium-ide.openqa.org/profiles/test-case">
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <link rel="selenium.base" href="" />
-<title>TestResetOptions</title>
+<title>TestJavaScriptWorking</title>
 </head>
 <body>
 <table cellpadding="1" cellspacing="1" border="1">
 <thead>
-<tr><td rowspan="1" colspan="3">TestResetOptions</td></tr>
+<tr><td rowspan="1" colspan="3">TestJavaScriptWorking</td></tr>
 </thead><tbody>
+<!--WDTS? Main Page-->
 <tr>
 	<td>clickAndWait</td>
 	<td>link=exact:What Did They Say?!?</td>
 	<td></td>
 </tr>
 <tr>
+	<td>assertVisible</td>
+	<td>wdts-page-introduction</td>
+	<td></td>
+</tr>
+<tr>
+	<td>assertElementPresent</td>
+	<td>//a[@id=&quot;wdts-tab-how-it-works&quot; and contains(@class,&quot;inactive&quot;)]</td>
+	<td></td>
+</tr>
+<!--Edit Approved Transcripts-->
+<tr>
+	<td>clickAndWait</td>
+	<td>link=Add New</td>
+	<td></td>
+</tr>
+<tr>
+	<td>assertNotVisible</td>
+	<td>//div[@class=&quot;wdts-embed-warning&quot;]</td>
+	<td></td>
+</tr>
+<tr>
+	<td>assertVisible</td>
+	<td>//button[text()=&quot;Scene Heading&quot;]</td>
+	<td></td>
+</tr>
+<tr>
+	<td>fireEvent</td>
+	<td>//div[@class=&quot;wdts-button-holder&quot;]//button[position()=1]</td>
 	<td>click</td>
-	<td>wdts-tab-misc-options</td>
+</tr>
+<tr>
+	<td>answerOnNextPrompt</td>
+	<td>Test</td>
 	<td></td>
 </tr>
 <tr>
-	<td>pause</td>
-	<td>1000</td>
-	<td></td>
-</tr>
-<tr>
-	<td>assertTextPresent</td>
-	<td>Reset Settings to Default</td>
-	<td></td>
-</tr>
-<tr>
-	<td>click</td>
-	<td>//input[@value='Reset What Did They Say?!?']</td>
-	<td></td>
-</tr>
-<tr>
-	<td>assertConfirmation</td>
-	<td>Are you sure? You could leave transcriptions inaccessible.</td>
-	<td></td>
-</tr>
-<tr>
-	<td>waitForPageToLoad</td>
-	<td>30000</td>
-	<td></td>
-</tr>
-<tr>
-	<td>assertTextPresent</td>
-	<td>What Did They Say?!? options reset</td>
-	<td></td>
-</tr>
-<tr>
-	<td>open</td>
-	<td>/wp-admin/</td>
+	<td>assertPrompt</td>
+	<td>Enter the scene heading:</td>
 	<td></td>
 </tr>
 

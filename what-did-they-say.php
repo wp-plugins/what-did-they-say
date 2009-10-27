@@ -3,7 +3,7 @@
 Plugin Name: What Did They Say?!?
 Plugin URI: http://www.coswellproductions.com/wordpress/wordpress-plugins/
 Description: Manage and display text transcriptions of comics, videos, or other media.
-Version: 0.9.1
+Version: 0.9.3
 Author: John Bintz
 Author URI: http://www.coswellproductions.com/wordpress/
 Text Domain: what-did-they-say
@@ -23,6 +23,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
 */
 
 foreach (glob(dirname(__FILE__) . '/classes/*.inc') as $__file) { require_once($__file); }
@@ -135,10 +136,9 @@ function transcripts_display($language_format = null, $show_transcripts_string =
 
   if (!empty($post_transcripts)) {
     foreach ($post_transcripts as $transcript) {
-      extract($transcript, EXTR_PREFIX_ALL, "transcript");
-      $transcript_transcript = trim($transcript_transcript);
-      if (!empty($transcript_transcript)) {
-        $transcripts[$transcript_language] = $transcript_transcript;
+      $transcript_text = trim($transcript['transcript']);
+      if (!empty($transcript_text)) {
+        $transcripts[$transcript['language']] = $transcript;
       }
     }
 
@@ -163,11 +163,11 @@ function transcripts_display($language_format = null, $show_transcripts_string =
         $output[] = '<div class="wdts-transcript-bundle' . ($do_hide ? ' wdts-hide-transcript' : '') . '">';
 
         foreach ($transcripts as $code => $transcript) {
-          $transcript = end(apply_filters('the_media_transcript', $transcript));
+          $transcript_text = end(apply_filters('the_media_transcript', $transcript, ''));
 
           $output[] = end(apply_filters('the_transcript_language_name', $language_format, $code, ''));
 
-          $output[] = '<div class="transcript-holder ' . $code . '">' . $transcript . '</div>';
+          $output[] = '<div class="transcript-holder ' . $code . '">' . $transcript_text . '</div>';
         }
         $output[] = '</div>';
       $output[] = '</div>';
@@ -181,7 +181,7 @@ function transcripts_display($language_format = null, $show_transcripts_string =
  * If you're allowing users to submit transcripts to the post transcript queue, use this tag in your Loop.
  */
 function the_media_transcript_queue_editor() {
-  global $post;
+  global $post, $wpdb;
 
   if (current_user_can('submit_transcriptions')) {
     $queued_transcript_object = new WDTSQueuedTranscript($post->ID);
@@ -191,6 +191,8 @@ function the_media_transcript_queue_editor() {
     $transcript_options = new WDTSTranscriptOptions($post->ID);    
 
     $options = get_option('what-did-they-say-options');
+
+    $users = $wpdb->get_results("SELECT ID, user_login from $wpdb->users ORDER BY user_login");
 
     foreach (array('Approved', 'Queued') as $name) {
       $var_name = strtolower($name);
@@ -214,7 +216,14 @@ function the_media_transcript_queue_editor() {
     if ($show_editor) {
       ?>
       <div style="display:none">
-        <span id="wdts-opener-<?php echo $id = md5(rand()) ?>">[ <a href="#"><?php _e('Edit/Add Transcripts', 'what-did-they-say') ?></a> ]</span>
+        <span id="wdts-opener-<?php echo $id = md5(rand()) ?>">[
+          <a href="#"><?php _e('Edit/Add Transcripts', 'what-did-they-say') ?></a>
+          <?php if (current_user_can('approve_transcriptions')) {
+            if (($queued_count = $queued_transcript_object->count()) > 0) { ?>
+              (<strong><?php printf(__('%d queued', 'what-did-they-say'), $queued_count) ?></strong>)
+            <?php } 
+          } ?>
+        ]</span>
       </div>
       <noscript>
         <p>JavaScript is required to edit transcripts.</p>
