@@ -19,6 +19,7 @@ class WhatDidTheySayAdmin {
     'search_integration' => true,
     'excerpt_distance' => 30,
     'use_nl2br' => false,
+    'show_approved_credit' => true,
     'high_insertion_level' => false,
     'hide_transcript' => array(
       'home' => true,
@@ -38,6 +39,8 @@ class WhatDidTheySayAdmin {
 
   var $is_ajax = false;
 
+  var $_import_chunk_size = 20;
+
   /**
    * Initialize the admin interface.
    * @param WhatDidTheySay $what_did_they_say The WhatDidTheySay object to use for all transcript transactions.
@@ -55,19 +58,23 @@ class WhatDidTheySayAdmin {
     return $result;
   }
   
-  /**
-   * Initialize the object.
-   */
-  function init() {
-		global $wpdb;
-		
+  function _set_up_capabilities() {
     // set up capabilities
     $this->capabilities = array(
       'submit_transcriptions'  => __('Submit transcriptions to a post', 'what-did-they-say'),
       'approve_transcriptions' => __('Approve transcriptions to a post', 'what-did-they-say'),
       'change_languages'      => __('Change the available languages', 'what-did-they-say')
     );
-
+  }
+  
+  /**
+   * Initialize the object.
+   */
+  function init() {
+    global $wpdb;
+    
+    $this->_set_up_capabilities();
+    
     // does this copy of wdts?!? reference new options?
     $options = get_option('what-did-they-say-options');
     if (!is_array($options)) {
@@ -134,6 +141,7 @@ class WhatDidTheySayAdmin {
     foreach (array(
       array('the_media_transcript', 2),
       array('the_language_name', 2),
+      array('the_approved_credit', 2),
       array('the_matching_transcript_excerpts', 3),
       array('the_transcript_language_name', 3),
       array('the_transcript_format_string', 1),
@@ -173,8 +181,8 @@ class WhatDidTheySayAdmin {
       add_action('wp_footer', array(&$this, 'wp_footer'));
     }
 
-		// sidebar widget
-	  wp_register_sidebar_widget('what-did-they-say', __('What Did They Say?!? Transcript', 'what-did-they-say'), array(&$this, 'transcript_sidebar_widget'), array('description' => __('Show the transcript for the current post.', 'what-did-they-say')));
+    // sidebar widget
+    wp_register_sidebar_widget('what-did-they-say', __('What Did They Say?!? Transcript', 'what-did-they-say'), array(&$this, 'transcript_sidebar_widget'), array('description' => __('Show the transcript for the current post.', 'what-did-they-say')));
 
     // handle form submission
     if (isset($_REQUEST['wdts'])) {
@@ -203,9 +211,9 @@ class WhatDidTheySayAdmin {
 
       if (isset($_REQUEST['wdts']['_nonce'])) {
         if (wp_verify_nonce($_REQUEST['wdts']['_nonce'], 'what-did-they-say')) {
-					if (($_REQUEST['wdts']['post_id'] <= 0) && ($_POST['post_ID'] > 0)) {
-						$_REQUEST['wdts']['post_id'] = $_POST['post_ID'];
-					}
+          if (($_REQUEST['wdts']['post_id'] <= 0) && ($_POST['post_ID'] > 0)) {
+            $_REQUEST['wdts']['post_id'] = $_POST['post_ID'];
+          }
 
           $this->handle_update($_REQUEST['wdts']);
           
@@ -217,13 +225,13 @@ class WhatDidTheySayAdmin {
     if (is_admin()) {
       $this->transcript_count = (int)$wpdb->get_var($wpdb->prepare("SELECT count($wpdb->postmeta.meta_key) FROM $wpdb->postmeta WHERE $wpdb->postmeta.meta_key = 'approved_transcripts'"));
     }
-	}
+  }
 
-	/** Widget **/
+  /** Widget **/
 
-	function transcript_sidebar_widget() {
-		transcripts_display();
-	}
+  function transcript_sidebar_widget() {
+    transcripts_display();
+  }
 
   /** Actions **/
 
@@ -315,6 +323,17 @@ class WhatDidTheySayAdmin {
         array(&$this, 'manage_admin')
       );
 
+      if (current_user_can('approve_transcriptions')) {
+        add_submenu_page(
+          'tools.php',
+          __('Import Transcripts', 'what-did-they-say'),
+          __('Import Transcripts', 'what-did-they-say'),
+          'approve_transcriptions',
+          'import-transcripts',
+          array(&$this, 'manage_import_transcripts')
+        );
+      }
+
       if ($plugin_page == "manage-wdts") {
         $this->read_language_file();
         wp_enqueue_style('wdts-admin', plugin_dir_url(dirname(__FILE__)) . 'css/wdts-admin.css');
@@ -322,11 +341,15 @@ class WhatDidTheySayAdmin {
 
         $this->plugin_data = get_plugin_data($this->_parent_file);
 
-				if ($this->transcript_count == 0) {
-					$this->notices[] = __('Welcome to <strong>What Did They Say?!?</strong> To get started, read the <strong>Introduction</strong>, and then <strong>How It Works</strong>.', 'what-did-they-say');
-				} elseif ($this->transcript_count < 10) {
-					$this->notices[] = __('Is <strong>What Did They Say?!?</strong> working out for you? Let John know via email (<a href="mailto:john@coswellproductions.com">john@coswellproductions.com</a>) or Twitter (<a href="http://twitter.com/JohnBintz">@JohnBintz</a>).', 'what-did-they-say');
-				}
+        if ($this->transcript_count == 0) {
+          $this->notices[] = __('Welcome to <strong>What Did They Say?!?</strong> To get started, read the <strong>Introduction</strong>, and then <strong>How It Works</strong>.', 'what-did-they-say');
+        } elseif ($this->transcript_count < 10) {
+          $this->notices[] = __('Is <strong>What Did They Say?!?</strong> working out for you? Let John know via email (<a href="mailto:john@coswellproductions.com">john@coswellproductions.com</a>) or Twitter (<a href="http://twitter.com/JohnBintz">@JohnBintz</a>).', 'what-did-they-say');
+        }
+      }
+
+      if (strpos($pagenow, 'edit') === 0) {
+        wp_enqueue_style('wdts-admin', plugin_dir_url(dirname(__FILE__)) . 'css/wdts-admin.css');
       }
 
       wp_enqueue_script('scriptaculous-effects');
@@ -362,8 +385,8 @@ class WhatDidTheySayAdmin {
         wp_enqueue_script('scriptaculous-effects');
         wp_enqueue_script('edit-transcripts', plugin_dir_url(dirname(__FILE__)) . 'js/edit-transcripts.js', array('scriptaculous-effects', 'wdts-script'));
 
-	      add_action('wp_head', array(&$this, 'include_editor_javascript'));
-			}
+        add_action('wp_head', array(&$this, 'include_editor_javascript'));
+      }
     }
   }
 
@@ -390,7 +413,7 @@ class WhatDidTheySayAdmin {
     if ($index === false) { $index = count($keys); }
 
     array_splice($keys, $index, 0, array('transcripts'));
-    array_splice($values, $index, 0, __('Trans'));
+    array_splice($values, $index, 0, __('<span class="wdts-posts-queued-icon">&nbsp;</span> <span class="wdts-posts-approved-icon">&nbsp;</span>'));
 
     return array_combine($keys, $values);
   }
@@ -400,10 +423,19 @@ class WhatDidTheySayAdmin {
    */
   function manage_posts_custom_column($name, $post_id) {
     if ($name === "transcripts") {
-      $queued_transcript_object = new WDTSQueuedTranscript($post_id);
+      foreach (array('Queued' => __('Queued', 'what-did-they-say'), 'Approved' => __('Approved', 'what-did-they-say')) as $type => $label) {
+        $class = "WDTS${type}Transcript";
+        $transcript_object = new $class($post_id);
+        $style = strtolower($type);
 
-      if (($queued_count = $queued_transcript_object->count()) > 0) {
-        printf(__('%s queued', 'what-did-they-say'), $queued_count);
+        $count = 0;
+        foreach ($transcript_object->get_transcripts() as $language => $transcript_info) {
+          if (!empty($transcript_info['transcript'])) { $count++; }
+        }
+
+        if ($count > 0) {
+          echo "<span title=\"${label}\" class=\"wdts-posts-${style}-icon\">" . $count . '</span>&nbsp;';
+        }
       }
     }
   }
@@ -545,8 +577,59 @@ class WhatDidTheySayAdmin {
     return $ok;
   }
 
+  function _get_transcript_posts() {
+    global $wpdb;
+    
+    return $wpdb->get_col("SELECT post_id FROM $wpdb->postmeta WHERE meta_key = 'transcript'");
+  }
+
+  function import_transcripts($language_code) {
+    $modified = 0;
+    $post_ids = $this->_get_transcript_posts();
+    if (!empty($post_ids)) {
+      $modified = 0;
+      foreach ($post_ids as $post_id) {
+        if ($transcript = get_post_meta($post_id, 'transcript', true)) {
+          $approved_transcript_manager = new WDTSApprovedTranscript($post_id);
+          $approved_transcript_manager->save_transcript(array(
+            'language' => $language_code,
+            'transcript' => $transcript
+          ));
+        }
+        delete_post_meta($post_id, 'transcript');
+
+        $modified++;
+        
+        if ($modified >= $this->_import_chunk_size) { break; }
+      }
+    }
+    return $modified;
+  }
 
   /** Handle data updates **/
+
+  /**
+   * Filter input for harmful things.
+   * @param string|array $node Either a string or an array of strings to process.
+   * @return string|array Either a processed string or an array of processed strings.
+   */
+  function _clean_child($node) {
+    if (is_array($node)) {
+      $new_nodes = array();
+      foreach ($node as $key => $n) {
+        $new_nodes[$key] = $this->_clean_child($n);
+      }
+      return $new_nodes;
+    } else {
+      $options = get_option('what-did-they-say-options');
+
+      $node = (string)$node;
+      foreach (array('script', 'style', 'link') as $tag) { $node = preg_replace("#<${tag}.*/${tag}>#", '', $node); }
+      if (!$options['allow_html']) { $node = strip_tags($node); }
+
+      return $node;
+    }
+  }
 
   /**
    * Handle an update to options.
@@ -561,24 +644,6 @@ class WhatDidTheySayAdmin {
         $result = $this->{$method_name}($info);
         if (!empty($result)) { $this->notices[] = $result; }
       }
-    }
-  }
-
-  function _clean_child($node) {
-    if (is_array($node)) {
-      $new_nodes = array();
-      foreach ($node as $key => $n) {
-        $new_nodes[$key] = $this->_clean_child($n);
-      }
-      return $new_nodes;
-    } else {
-      $options = get_option('what-did-they-say-options');
-
-      $node = (string)$node;
-      foreach (array('script', 'style', 'link') as $tag) { $node = preg_replace("#<${tag}.*/${tag}>#", '', $node); }
-      if (!$options['allow_html']) { $node = strip_tags($node); }
-      
-      return $node;
     }
   }
 
@@ -616,6 +681,16 @@ class WhatDidTheySayAdmin {
     }
   }
 
+  function handle_update_import_legacy($info) {
+    $this->is_ajax = true;
+
+    $result = $this->import_transcripts($info['language']);
+    if ($result === false) { $result = 'false'; }
+
+    header("X-JSON: '${result}'");
+    exit(0);
+  }
+
   function handle_update_update_queued_transcript($info) {
     $this->is_ajax = true;
 
@@ -649,10 +724,11 @@ class WhatDidTheySayAdmin {
     if (current_user_can('approve_transcriptions')) {
       $approved_transcript_manager = new WDTSApprovedTranscript($info['post_id']);
 
-      foreach ($info['transcripts'] as $language => $transcript) {
+      foreach ($info['transcripts'] as $language => $transcript_info) {
         $approved_transcript_manager->save_transcript(array(
-          'language' => $language,
-          'transcript' => $transcript
+          'language'   => $language,
+          'transcript' => $transcript_info['transcript'],
+          'user_id'    => $transcript_info['user_id']
         ));
       }
 
@@ -687,20 +763,29 @@ class WhatDidTheySayAdmin {
   }
 
   /**
+   * Approve a transcript.
+   */
+  function _approve_transcript($post_id, $key) {
+    $approved_transcript_manager = new WDTSApprovedTranscript($post_id);
+    $queued_transcript_manager   = new WDTSQueuedTranscript($post_id);
+
+    if (($transcript = $queued_transcript_manager->delete_transcript_by_key($key)) !== false) {
+      $approved_transcript_manager->save_transcript($transcript);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Handle transcript approval.
    */
   function handle_update_approve_transcript($info) {
     $this->is_ajax = true;
 
     if (current_user_can('approve_transcriptions')) {
-      $approved_transcript_manager = new WDTSApprovedTranscript($info['post_id']);
-      $queued_transcript_manager  = new WDTSQueuedTranscript($info['post_id']);
-      
-      if (($transcript = $queued_transcript_manager->delete_transcript_by_key($info['key'])) !== false) {
-        $approved_transcript_manager->save_transcript($transcript);
-        return;
+      if (!$this->_approve_transcript($info['post_id'], $info['key'])) {
+        header('HTTP/1.1 500 Internal Server Error');
       }
-      header('HTTP/1.1 500 Internal Server Error');
       return;
     }
     header('HTTP/1.1 401 Unauthorized');
@@ -732,7 +817,7 @@ class WhatDidTheySayAdmin {
     if (current_user_can('edit_themes')) {
       $options = get_option('what-did-they-say-options');
 
-      foreach (array('load_default_styles', 'use_nl2br', 'transcript_effects', 'allow_html') as $field) { $options[$field] = isset($info[$field]);  }
+      foreach (array('load_default_styles', 'use_nl2br', 'transcript_effects', 'allow_html', 'show_approved_credit') as $field) { $options[$field] = isset($info[$field]);  }
       $options['excerpt_distance'] = !empty($info['excerpt_distance']) ? $info['excerpt_distance'] : 30;
       foreach (array_keys($options['hide_transcript']) as $type) {
         $options['hide_transcript'][$type] = isset($info['hide_transcript'][$type]);
@@ -847,26 +932,28 @@ class WhatDidTheySayAdmin {
       $users = $wpdb->get_results("SELECT ID, user_login from $wpdb->users ORDER BY user_login");
 
       foreach ((array)$users as $user) {
-        $user_capabilities = array();
-
-        foreach (array_keys($this->capabilities) as $key) {
-          if (isset($info['user_capabilities'][$user->ID])) {
-            if (isset($info['user_capabilities'][$user->ID][$key])) {
-              $user_capabilities[$key] = true;
-            }
-          }
-        }
-
-        if (!empty($user_capabilities)) {
-          update_usermeta($user->ID, 'transcript_capabilities', $user_capabilities);
-        } else {
-          delete_usermeta($user->ID, 'transcript_capabilities');
+        if (isset($info['user_capabilities'][$user->ID])) {
+          $this->_update_user_perms($user->ID, $info['user_capabilities'][$user->ID]);
         }
       }
       
       $updated = __('Per-user permissions updated.', 'what-did-they-say');
     }
     return $updated;
+  }
+  
+  function _update_user_perms($user_id, $perms) {
+    $user_capabilities = array();
+
+    foreach (array_keys($this->capabilities) as $key) {
+      if (isset($perms[$key])) { $user_capabilities[$key] = true; }
+    }
+    
+    if (!empty($user_capabilities)) {
+      update_usermeta($user_id, 'transcript_capabilities', $user_capabilities);
+    } else {
+      delete_usermeta($user_id, 'transcript_capabilities');
+    }
   }
 
   /**
@@ -989,7 +1076,7 @@ class WhatDidTheySayAdmin {
     $available_filters = $this->_get_available_override_filters();
     $suggested_amount = 20 + ($this->transcript_count * 0.1);
 
-    $users = $wpdb->get_results("SELECT ID, user_login from $wpdb->users ORDER BY user_login");
+    $users = $wpdb->get_results("SELECT ID, user_login, display_name from $wpdb->users ORDER BY user_login");
 
     include('partials/admin.inc');
   }
@@ -998,7 +1085,7 @@ class WhatDidTheySayAdmin {
    * Show the Manage Transcriptions meta box.
    */
   function manage_transcriptions_meta_box() {
-    global $post;
+    global $post, $wpdb;
 
     $options = get_option('what-did-they-say-options');
 
@@ -1014,8 +1101,21 @@ class WhatDidTheySayAdmin {
 
     $language_options = new WDTSLanguageOptions();
 
+    $users = $wpdb->get_results("SELECT ID, user_login, display_name from $wpdb->users ORDER BY user_login");
+
     $nonce = wp_create_nonce('what-did-they-say');
     include('partials/meta-box.inc');
+  }
+  
+  function manage_import_transcripts() {
+    global $wpdb;
+    
+    $options = get_option('what-did-they-say-options');
+    
+    $legacy_transcript_count = (int)$wpdb->get_var($wpdb->prepare("SELECT count($wpdb->postmeta.meta_key) FROM $wpdb->postmeta WHERE $wpdb->postmeta.meta_key = 'transcript'"));
+    $nonce = wp_create_nonce('what-did-they-say');
+
+    include('partials/import-transcripts.inc');
   }
 }
 

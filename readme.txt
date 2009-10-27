@@ -4,7 +4,7 @@ Donate link: http://www.coswellproductions.com/wordpress/wordpress-plugins
 Tags: admin, comics, webcomics, transcript, video, audio
 Requires at least: 2.8
 Tested up to: 2.9
-Stable tag: 0.9.2
+Stable tag: 0.9.3
 
 What Did They Say?!? lets your users provide multilingual transcriptions to your media, in their language, quickly and securely.
 
@@ -24,7 +24,7 @@ Download and unzip the latest version of **What Did They Say?!?** to your `wp-co
 filters, create the directory `wp-content/transcript-filters`.
 
 **What Did They Say?!?** puts a menu item under Options. It also adds a meta box to post editing and a new column in the Edit Posts lists which
-indicates how many transcripts are awaiting approval.
+indicates how many transcripts are awaiting approval. The Import Transcripts option appears under Tools.
 
 == Frequently Asked Questions ==
 
@@ -32,6 +32,12 @@ indicates how many transcripts are awaiting approval.
 
 On the WDTS *Introduction* page, check **Enable automatic transcript embedding**. Some themes do not play nicely with this embedding
 by default, so you may be asked to enable **Inject transcripts at level 100 instead of level 15** on the *Misc. Options* page.
+
+= How do I import my legacy transcripts? =
+
+If you were using a theme, such as ComicPress, that supports storing transcripts in the "transcript" post metadata field, you can now
+import all of those transcripts into What Did They Say?!? and gain improved control over your transcripts. Under the Tools menu is an
+option called "Import Transcripts." You can import your legacy transcripts from there. Be sure to back up your database first!
 
 = How do I add transcript excerpts to search results? =
 
@@ -65,6 +71,7 @@ Transcripts can be in one of two states: **queued** and **approved**. Users can 
 * Once a transcript is approved, it can only be edited by users who can approve transcripts.
 * Users who can approve transcripts can also directly edit the approved transcripts.
 * If a user submits a transcript to the queue, they can delete it before it's approved.
+* When approved, the original submitter will be given credit for each approved transcript that's displayed.
 
 Permissions are handed out in two ways and are set under the *Capabilities* tab.
 
@@ -92,6 +99,11 @@ Thanks to @mindfaucet, @Frumph, and @ChibiJen for early testing and bug reportin
 
 == Changelog ==
 
+= 0.9.3 =
+* Import from legacy transcript systems implemented.
+* Can now show the name and Gravatar of the user who created the approved transcripts.
+* New filter theme to match ComicPress 2.8.
+* Improved visual feedback for number of queued/approved transcripts per post.
 = 0.9.2 =
 * JavaScript bugfixes.
 * Per-user permissions.
